@@ -1,0 +1,319 @@
+{
+  "info": {
+    "_postman_id": "rabbitmq-ecommerce-demo",
+    "name": "RabbitMQ E-commerce Demo",
+    "description": "Testa os três padrões RabbitMQ do projeto via API HTTP do Management Plugin.\n\nPré-requisito: `docker compose up` rodando.\nPainel: http://localhost:15672 (guest / guest)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:15672", "type": "string" },
+    { "key": "vhost",    "value": "%2F",                   "type": "string" }
+  ],
+  "auth": {
+    "type": "basic",
+    "basic": [
+      { "key": "username", "value": "guest", "type": "string" },
+      { "key": "password", "value": "guest", "type": "string" }
+    ]
+  },
+  "item": [
+
+    {
+      "name": "📊 Monitoramento",
+      "item": [
+        {
+          "name": "Overview geral",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/overview",
+              "host": ["{{base_url}}"], "path": ["api","overview"] },
+            "description": "Métricas globais: conexões, canais, filas, taxa de mensagens."
+          }
+        },
+        {
+          "name": "Listar todas as filas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/{{vhost}}",
+              "host": ["{{base_url}}"], "path": ["api","queues","{{vhost}}"] },
+            "description": "Profundidade atual, taxa de entrega e consumidores de cada fila."
+          }
+        },
+        {
+          "name": "Fila: orders.processing",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/{{vhost}}/orders.processing",
+              "host": ["{{base_url}}"], "path": ["api","queues","{{vhost}}","orders.processing"] }
+          }
+        },
+        {
+          "name": "Fila: orders.dlq",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/{{vhost}}/orders.dlq",
+              "host": ["{{base_url}}"], "path": ["api","queues","{{vhost}}","orders.dlq"] },
+            "description": "Dead-letter queue — mensagens que falharam após todas as tentativas de retry."
+          }
+        },
+        {
+          "name": "Listar todos os exchanges",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/exchanges/{{vhost}}",
+              "host": ["{{base_url}}"], "path": ["api","exchanges","{{vhost}}"] }
+          }
+        },
+        {
+          "name": "Exchange: orders.events (fanout)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/exchanges/{{vhost}}/orders.events",
+              "host": ["{{base_url}}"], "path": ["api","exchanges","{{vhost}}","orders.events"] }
+          }
+        },
+        {
+          "name": "Conexões ativas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/connections",
+              "host": ["{{base_url}}"], "path": ["api","connections"] }
+          }
+        },
+        {
+          "name": "Consumidores ativos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/consumers",
+              "host": ["{{base_url}}"], "path": ["api","consumers"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "📦 Work Queue — Pedidos",
+      "description": "Padrão: producer envia pedidos para orders.processing; os workers consomem com prefetch=1 e processam em paralelo. Falhas vão para retry (5s/30s) e depois para DLQ.",
+      "item": [
+        {
+          "name": "Enviar 1 pedido",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/exchanges/{{vhost}}/amq.default/publish",
+              "host": ["{{base_url}}"], "path": ["api","exchanges","{{vhost}}","amq.default","publish"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"delivery_mode\": 2,\n    \"headers\": { \"x-retry-count\": 0 }\n  },\n  \"routing_key\": \"orders.processing\",\n  \"payload\": \"{\\\"orderId\\\":\\\"ord-postman-001\\\",\\\"customerId\\\":\\\"cust-42\\\",\\\"items\\\":[{\\\"productId\\\":\\\"prod-1\\\",\\\"quantity\\\":2,\\\"price\\\":49.99}],\\\"total\\\":99.98,\\\"createdAt\\\":\\\"2026-05-18T00:00:00.000Z\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Publica 1 pedido na fila orders.processing. Mude o orderId para enviar pedidos diferentes."
+          }
+        },
+        {
+          "name": "Enviar pedido de alto valor",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/exchanges/{{vhost}}/amq.default/publish",
+              "host": ["{{base_url}}"], "path": ["api","exchanges","{{vhost}}","amq.default","publish"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"delivery_mode\": 2,\n    \"headers\": { \"x-retry-count\": 0 }\n  },\n  \"routing_key\": \"orders.processing\",\n  \"payload\": \"{\\\"orderId\\\":\\\"ord-vip-999\\\",\\\"customerId\\\":\\\"cust-vip\\\",\\\"items\\\":[{\\\"productId\\\":\\\"prod-premium\\\",\\\"quantity\\\":5,\\\"price\\\":199.99}],\\\"total\\\":999.95,\\\"createdAt\\\":\\\"2026-05-18T00:00:00.000Z\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "Simular mensagem já em retry (1ª tentativa)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/exchanges/{{vhost}}/amq.default/publish",
+              "host": ["{{base_url}}"], "path": ["api","exchanges","{{vhost}}","amq.default","publish"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"delivery_mode\": 2,\n    \"headers\": { \"x-retry-count\": 1 }\n  },\n  \"routing_key\": \"orders.processing\",\n  \"payload\": \"{\\\"orderId\\\":\\\"ord-retry-test\\\",\\\"customerId\\\":\\\"cust-10\\\",\\\"items\\\":[{\\\"productId\\\":\\\"prod-3\\\",\\\"quantity\\\":1,\\\"price\\\":25.00}],\\\"total\\\":25.00,\\\"createdAt\\\":\\\"2026-05-18T00:00:00.000Z\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Envia com x-retry-count: 1 — simula uma mensagem que já falhou 1 vez. Se falhar de novo, vai para orders.retry.30s."
+          }
+        },
+        {
+          "name": "Ver mensagens no DLQ (sem remover)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/queues/{{vhost}}/orders.dlq/get",
+              "host": ["{{base_url}}"], "path": ["api","queues","{{vhost}}","orders.dlq","get"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"count\": 10,\n  \"ackmode\": \"ack_requeue_true\",\n  \"encoding\": \"auto\",\n  \"truncate\": 50000\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Inspeciona mensagens no Dead Letter Queue sem consumi-las (requeue=true)."
+          }
+        },
+        {
+          "name": "Ver mensagens no orders.retry.5s",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/queues/{{vhost}}/orders.retry.5s/get",
+              "host": ["{{base_url}}"], "path": ["api","queues","{{vhost}}","orders.retry.5s","get"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"count\": 5,\n  \"ackmode\": \"ack_requeue_true\",\n  \"encoding\": \"auto\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "📡 Pub/Sub — Eventos de Pedido",
+      "description": "Padrão: publisher envia para o exchange fanout orders.events; inventory-consumer e notification-consumer recebem o mesmo evento de forma independente.",
+      "item": [
+        {
+          "name": "Publicar evento OrderCreated",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/exchanges/{{vhost}}/orders.events/publish",
+              "host": ["{{base_url}}"], "path": ["api","exchanges","{{vhost}}","orders.events","publish"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"delivery_mode\": 2\n  },\n  \"routing_key\": \"\",\n  \"payload\": \"{\\\"orderId\\\":\\\"ord-event-001\\\",\\\"customerId\\\":\\\"cust-55\\\",\\\"items\\\":[{\\\"productId\\\":\\\"prod-10\\\",\\\"quantity\\\":3,\\\"price\\\":15.00}],\\\"total\\\":45.00,\\\"createdAt\\\":\\\"2026-05-18T00:00:00.000Z\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Publica no exchange fanout — routing_key vazio (fanout ignora). Ambos os consumers (inventory e notification) receberão este evento."
+          }
+        },
+        {
+          "name": "Publicar evento — pedido grande",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/exchanges/{{vhost}}/orders.events/publish",
+              "host": ["{{base_url}}"], "path": ["api","exchanges","{{vhost}}","orders.events","publish"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"delivery_mode\": 2\n  },\n  \"routing_key\": \"\",\n  \"payload\": \"{\\\"orderId\\\":\\\"ord-bulk-500\\\",\\\"customerId\\\":\\\"cust-wholesale\\\",\\\"items\\\":[{\\\"productId\\\":\\\"prod-A\\\",\\\"quantity\\\":100,\\\"price\\\":5.99},{\\\"productId\\\":\\\"prod-B\\\",\\\"quantity\\\":50,\\\"price\\\":12.99}],\\\"total\\\":1248.50,\\\"createdAt\\\":\\\"2026-05-18T00:00:00.000Z\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Pedido com múltiplos itens — o inventory-consumer somará as quantidades de todos os itens."
+          }
+        },
+        {
+          "name": "Ver bindings do exchange orders.events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/exchanges/{{vhost}}/orders.events/bindings/source",
+              "host": ["{{base_url}}"], "path": ["api","exchanges","{{vhost}}","orders.events","bindings","source"] },
+            "description": "Mostra quais filas estão vinculadas ao exchange fanout (uma por consumer ativo)."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🔁 RPC — Consulta de Status",
+      "description": "Padrão: client envia orderId para orders.status.rpc com replyTo + correlationId; server responde na fila temporária.\n\nVia Management API só é possível enviar a requisição — a resposta vai para uma fila replyTo que não existe aqui. Use o client TypeScript para o ciclo completo: `npm run rpc:client <orderId>`",
+      "item": [
+        {
+          "name": "Publicar requisição de status",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/exchanges/{{vhost}}/amq.default/publish",
+              "host": ["{{base_url}}"], "path": ["api","exchanges","{{vhost}}","amq.default","publish"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"correlation_id\": \"postman-corr-001\",\n    \"reply_to\": \"amq.rabbitmq.reply-to\"\n  },\n  \"routing_key\": \"orders.status.rpc\",\n  \"payload\": \"{\\\"orderId\\\":\\\"ord-001\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Envia uma requisição para o servidor RPC. O servidor processará e tentará responder em amq.rabbitmq.reply-to — que não é consumível via HTTP API.\n\nPara ver o ciclo completo:\n  npm run rpc:client ord-001"
+          }
+        },
+        {
+          "name": "Ver fila orders.status.rpc",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/{{vhost}}/orders.status.rpc",
+              "host": ["{{base_url}}"], "path": ["api","queues","{{vhost}}","orders.status.rpc"] },
+            "description": "Monitora a fila de requisições RPC. Normalmente fica vazia pois o servidor processa rapidamente."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🧪 Cenários de Teste",
+      "description": "Sequências para testar comportamentos específicos do sistema.",
+      "item": [
+        {
+          "name": "Mensagem com payload inválido (teste DLQ)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/exchanges/{{vhost}}/amq.default/publish",
+              "host": ["{{base_url}}"], "path": ["api","exchanges","{{vhost}}","amq.default","publish"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"delivery_mode\": 2,\n    \"headers\": { \"x-retry-count\": 0 }\n  },\n  \"routing_key\": \"orders.processing\",\n  \"payload\": \"isso nao e json valido { broken\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Envia JSON inválido para orders.processing. O worker vai capturar o SyntaxError, ack a mensagem e enviá-la para orders.dlq com header x-error: 'Parse error: ...'.\n\nVerifique o DLQ depois com 'Ver mensagens no DLQ'."
+          }
+        },
+        {
+          "name": "Mensagem já no último retry (vai direto ao DLQ)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/api/exchanges/{{vhost}}/amq.default/publish",
+              "host": ["{{base_url}}"], "path": ["api","exchanges","{{vhost}}","amq.default","publish"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"delivery_mode\": 2,\n    \"headers\": { \"x-retry-count\": 2 }\n  },\n  \"routing_key\": \"orders.processing\",\n  \"payload\": \"{\\\"orderId\\\":\\\"ord-exhausted\\\",\\\"customerId\\\":\\\"cust-1\\\",\\\"items\\\":[{\\\"productId\\\":\\\"prod-x\\\",\\\"quantity\\\":1,\\\"price\\\":10.00}],\\\"total\\\":10.00,\\\"createdAt\\\":\\\"2026-05-18T00:00:00.000Z\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "x-retry-count: 2 == MAX_RETRIES. Se o worker falhar ao processar, a mensagem vai direto para orders.dlq sem passar pelas filas de retry."
+          }
+        },
+        {
+          "name": "Purgar fila orders.dlq",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/{{vhost}}/orders.dlq/contents",
+              "host": ["{{base_url}}"], "path": ["api","queues","{{vhost}}","orders.dlq","contents"] },
+            "description": "Remove todas as mensagens do DLQ. Use para limpar após testes."
+          }
+        },
+        {
+          "name": "Purgar fila orders.processing",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/{{vhost}}/orders.processing/contents",
+              "host": ["{{base_url}}"], "path": ["api","queues","{{vhost}}","orders.processing","contents"] },
+            "description": "Remove todas as mensagens pendentes em orders.processing. Use para resetar o estado entre testes."
+          }
+        }
+      ]
+    }
+
+  ]
+}
