@@ -1,0 +1,34 @@
+export const RABBITMQ_URL = process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672';
+
+export const QUEUES = {
+  ORDERS_PROCESSING: 'orders.processing',
+  ORDERS_DLQ: 'orders.dlq',
+  ORDERS_RETRY_5S: 'orders.retry.5s',
+  ORDERS_RETRY_30S: 'orders.retry.30s',
+  ORDERS_STATUS_RPC: 'orders.status.rpc',
+} as const;
+
+export const EXCHANGES = {
+  ORDERS_EVENTS: 'orders.events',
+} as const;
+
+export const RETRY_DELAYS: readonly number[] = [5000, 30000];
+export const MAX_RETRIES = RETRY_DELAYS.length;
+
+export interface OrderMessage {
+  orderId: string;
+  customerId: string;
+  items: Array<{ productId: string; quantity: number; price: number }>;
+  total: number;
+  createdAt: string;
+}
+
+export interface StatusRequest {
+  orderId: string;
+}
+
+export interface StatusResponse {
+  orderId: string;
+  status: 'pending' | 'processing' | 'shipped' | 'delivered';
+  updatedAt: string;
+}
