@@ -15,29 +15,39 @@ export async function handleMessage(
   msg: ConsumeMessage,
   processor: OrderProcessor = defaultProcessor
 ): Promise<void> {
-  const order: OrderMessage = JSON.parse(msg.content.toString());
-  const retryCount: number = (msg.properties.headers?.['x-retry-count'] as number) ?? 0;
-
   try {
-    await processor(order);
-    channel.ack(msg);
-  } catch (err) {
-    channel.ack(msg);
+    const order: OrderMessage = JSON.parse(msg.content.toString());
+    const retryCount: number = (msg.properties.headers?.['x-retry-count'] as number) ?? 0;
 
-    if (retryCount < MAX_RETRIES) {
-      const retryQueue = retryCount === 0 ? QUEUES.ORDERS_RETRY_5S : QUEUES.ORDERS_RETRY_30S;
-      channel.sendToQueue(retryQueue, msg.content, {
-        headers: { ...msg.properties.headers, 'x-retry-count': retryCount + 1 },
-        persistent: true,
-      });
-      console.log(`[worker] Retry ${retryCount + 1}/${MAX_RETRIES} for order ${order.orderId} via ${retryQueue}`);
-    } else {
-      channel.sendToQueue(QUEUES.ORDERS_DLQ, msg.content, {
-        headers: { ...msg.properties.headers, 'x-error': (err as Error).message },
-        persistent: true,
-      });
-      console.log(`[worker] Max retries reached for order ${order.orderId} — sent to DLQ`);
+    try {
+      await processor(order);
+      channel.ack(msg);
+    } catch (err) {
+      channel.ack(msg);
+
+      if (retryCount < MAX_RETRIES) {
+        const retryQueue = retryCount === 0 ? QUEUES.ORDERS_RETRY_5S : QUEUES.ORDERS_RETRY_30S;
+        channel.sendToQueue(retryQueue, msg.content, {
+          headers: { ...msg.properties.headers, 'x-retry-count': retryCount + 1 },
+          persistent: true,
+        });
+        console.log(`[worker] Retry ${retryCount + 1}/${MAX_RETRIES} for order ${order.orderId} via ${retryQueue}`);
+      } else {
+        channel.sendToQueue(QUEUES.ORDERS_DLQ, msg.content, {
+          headers: { ...msg.properties.headers, 'x-error': (err as Error).message },
+          persistent: true,
+        });
+        console.log(`[worker] Max retries reached for order ${order.orderId} — sent to DLQ`);
+      }
     }
+  } catch (parseErr) {
+    // Malformed message — ack and send to DLQ immediately
+    channel.ack(msg);
+    channel.sendToQueue(QUEUES.ORDERS_DLQ, msg.content, {
+      headers: { 'x-error': `Parse error: ${(parseErr as Error).message}` },
+      persistent: true,
+    });
+    console.error(`[worker] Malformed message sent to DLQ: ${(parseErr as Error).message}`);
   }
 }
 

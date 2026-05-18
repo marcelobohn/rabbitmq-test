@@ -61,6 +61,7 @@ describe('handleMessage', () => {
 
     await handleMessage(mockChannel as unknown as Channel, msg, processor);
 
+    expect(mockChannel.ack).toHaveBeenCalledWith(msg);
     expect(mockChannel.sendToQueue).toHaveBeenCalledWith(
       QUEUES.ORDERS_RETRY_30S,
       msg.content,
@@ -76,6 +77,7 @@ describe('handleMessage', () => {
 
     await handleMessage(mockChannel as unknown as Channel, msg, processor);
 
+    expect(mockChannel.ack).toHaveBeenCalledWith(msg);
     expect(mockChannel.sendToQueue).toHaveBeenCalledWith(
       QUEUES.ORDERS_DLQ,
       msg.content,
