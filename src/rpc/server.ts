@@ -19,17 +19,21 @@ async function main(): Promise<void> {
 
   await channel.consume(QUEUES.ORDERS_STATUS_RPC, (msg) => {
     if (!msg) return;
+    try {
+      const request: StatusRequest = JSON.parse(msg.content.toString());
+      const response = getOrderStatus(request.orderId);
 
-    const request: StatusRequest = JSON.parse(msg.content.toString());
-    const response = getOrderStatus(request.orderId);
-
-    channel.sendToQueue(
-      msg.properties.replyTo,
-      Buffer.from(JSON.stringify(response)),
-      { correlationId: msg.properties.correlationId }
-    );
-    channel.ack(msg);
-    console.log(`[rpc-server] Replied to ${request.orderId}: ${response.status}`);
+      channel.sendToQueue(
+        msg.properties.replyTo,
+        Buffer.from(JSON.stringify(response)),
+        { correlationId: msg.properties.correlationId }
+      );
+      channel.ack(msg);
+      console.log(`[rpc-server] Replied to ${request.orderId}: ${response.status}`);
+    } catch (err) {
+      console.error('[rpc-server] Failed to process request:', (err as Error).message);
+      channel.nack(msg, false, false);
+    }
   });
 
   process.on('SIGTERM', async () => {
