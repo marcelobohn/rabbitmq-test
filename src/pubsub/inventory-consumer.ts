@@ -30,6 +30,11 @@ async function main(): Promise<void> {
       channel.nack(msg, false, false);
     }
   });
+
+  process.on('SIGTERM', async () => {
+    await channel.close();
+    process.exit(0);
+  });
 }
 
 if (require.main === module) {
