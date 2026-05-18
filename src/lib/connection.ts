@@ -19,26 +19,36 @@ export async function connectWithRetry(url: string, maxAttempts = 10): Promise<C
 
 export function getConnection(): Promise<ChannelModel> {
   if (!_connectionPromise) {
-    _connectionPromise = connectWithRetry(RABBITMQ_URL).then(conn => {
-      conn.on('error', (err: Error) => {
-        console.error('[connection] Error:', err.message);
+    _connectionPromise = connectWithRetry(RABBITMQ_URL)
+      .then(conn => {
+        conn.on('error', (err: Error) => {
+          console.error('[connection] Error:', err.message);
+          _connectionPromise = null;
+        });
+        conn.on('close', () => {
+          console.warn('[connection] Connection closed');
+          _connectionPromise = null;
+        });
+        return conn;
+      })
+      .catch(err => {
         _connectionPromise = null;
+        throw err;
       });
-      conn.on('close', () => {
-        console.warn('[connection] Connection closed');
-        _connectionPromise = null;
-      });
-      return conn;
-    });
   }
   return _connectionPromise;
 }
 
 export async function closeConnection(): Promise<void> {
   if (_connectionPromise) {
-    const conn = await _connectionPromise;
+    const promise = _connectionPromise;
     _connectionPromise = null;
-    conn.removeAllListeners();
-    await conn.close();
+    try {
+      const conn = await promise;
+      conn.removeAllListeners();
+      await conn.close();
+    } catch {
+      // Connection never established; nothing to close.
+    }
   }
 }

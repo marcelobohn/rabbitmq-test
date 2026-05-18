@@ -74,6 +74,30 @@ describe('getConnection', () => {
     expect(conn1).toBe(mockConn);
   });
 
+  it('reconnects after connection close resets the promise', async () => {
+    const mockConn = { on: jest.fn(), close: jest.fn(), removeAllListeners: jest.fn() } as any;
+
+    let closeHandler: (() => void) | undefined;
+    mockConn.on.mockImplementation((event: string, handler: () => void) => {
+      if (event === 'close') closeHandler = handler;
+    });
+
+    let getConn: () => Promise<any>;
+    let amqpMock: any;
+    jest.isolateModules(() => {
+      jest.mock('amqplib');
+      amqpMock = require('amqplib');
+      amqpMock.connect.mockResolvedValue(mockConn);
+      ({ getConnection: getConn } = require('../../src/lib/connection'));
+    });
+
+    await getConn!();
+    closeHandler!();
+
+    await getConn!();
+    expect(amqpMock.connect).toHaveBeenCalledTimes(2);
+  });
+
   it('reconnects after connection error resets the promise', async () => {
     const mockConn = { on: jest.fn(), close: jest.fn(), removeAllListeners: jest.fn() } as any;
 
