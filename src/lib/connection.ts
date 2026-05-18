@@ -1,7 +1,7 @@
 import amqplib, { ChannelModel } from 'amqplib';
 import { RABBITMQ_URL } from './config';
 
-let _connection: ChannelModel | null = null;
+let _connectionPromise: Promise<ChannelModel> | null = null;
 
 export async function connectWithRetry(url: string, maxAttempts = 10): Promise<ChannelModel> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -17,23 +17,28 @@ export async function connectWithRetry(url: string, maxAttempts = 10): Promise<C
   throw new Error('unreachable');
 }
 
-export async function getConnection(): Promise<ChannelModel> {
-  if (!_connection) {
-    _connection = await connectWithRetry(RABBITMQ_URL);
-    _connection.on('error', (err: Error) => {
-      console.error('[connection] Error:', err.message);
-      _connection = null;
-    });
-    _connection.on('close', () => {
-      _connection = null;
+export function getConnection(): Promise<ChannelModel> {
+  if (!_connectionPromise) {
+    _connectionPromise = connectWithRetry(RABBITMQ_URL).then(conn => {
+      conn.on('error', (err: Error) => {
+        console.error('[connection] Error:', err.message);
+        _connectionPromise = null;
+      });
+      conn.on('close', () => {
+        console.warn('[connection] Connection closed');
+        _connectionPromise = null;
+      });
+      return conn;
     });
   }
-  return _connection;
+  return _connectionPromise;
 }
 
 export async function closeConnection(): Promise<void> {
-  if (_connection) {
-    await _connection.close();
-    _connection = null;
+  if (_connectionPromise) {
+    const conn = await _connectionPromise;
+    _connectionPromise = null;
+    conn.removeAllListeners();
+    await conn.close();
   }
 }
