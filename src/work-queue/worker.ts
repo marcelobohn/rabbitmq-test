@@ -84,4 +84,6 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch(console.error);
+if (require.main === module) {
+  main().catch(console.error);
+}

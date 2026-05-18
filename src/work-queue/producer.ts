@@ -39,4 +39,6 @@ async function main(): Promise<void> {
   await closeConnection();
 }
 
-main().catch(console.error);
+if (require.main === module) {
+  main().catch(console.error);
+}
