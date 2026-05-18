@@ -18,11 +18,16 @@ async function main(): Promise<void> {
 
   console.log('[notification-consumer] Waiting for OrderCreated events...');
 
-  channel.consume(queue, (msg) => {
+  await channel.consume(queue, (msg) => {
     if (!msg) return;
-    const order: OrderMessage = JSON.parse(msg.content.toString());
-    handleNotification(order);
-    channel.ack(msg);
+    try {
+      const order: OrderMessage = JSON.parse(msg.content.toString());
+      handleNotification(order);
+      channel.ack(msg);
+    } catch (err) {
+      console.error('[notification-consumer] Failed to process message:', (err as Error).message);
+      channel.nack(msg, false, false);
+    }
   });
 }
 
