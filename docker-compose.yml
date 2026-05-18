@@ -23,8 +23,7 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
-    deploy:
-      replicas: 2
+    # To run 2 workers: docker compose up --scale worker=2
 
   inventory-consumer:
     build: .
