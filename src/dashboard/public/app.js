@@ -50,6 +50,7 @@ const els = {
   feedback: $('form-feedback'),
   orders: $('orders'),
   empty: $('empty'),
+  clear: $('clear-orders'),
 };
 
 const orders = new Map();      // orderId -> latest view from the server
@@ -228,6 +229,10 @@ function renderSnapshot(list) {
   orders.clear();
   rows.clear();
   els.orders.replaceChildren();
+  // Drop UI state of orders that are no longer listed (e.g. after "Limpar lista")
+  const ids = new Set(list.map((o) => o.orderId));
+  for (const id of [...expanded]) if (!ids.has(id)) expanded.delete(id);
+  for (const id of [...rpcResults.keys()]) if (!ids.has(id)) rpcResults.delete(id);
   // The server sends newest first; prepend oldest first to keep that order
   [...list].reverse().forEach((order) => upsertOrder(order));
   els.empty.hidden = orders.size > 0;
@@ -290,6 +295,20 @@ async function queryStatus(orderId) {
   }
   rerender(orderId);
 }
+
+els.clear.addEventListener('click', async () => {
+  els.clear.disabled = true;
+  try {
+    // The server answers every open tab with an empty snapshot
+    const res = await fetch('/api/orders', { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch (err) {
+    els.feedback.className = 'feedback error';
+    els.feedback.textContent = `Não foi possível limpar a lista: ${err.message}`;
+  } finally {
+    els.clear.disabled = false;
+  }
+});
 
 els.rate.addEventListener('input', () => { els.rateValue.textContent = `${els.rate.value}%`; });
 

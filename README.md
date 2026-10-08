@@ -106,6 +106,9 @@ Abra http://localhost:3000 (ou `npm run dashboard` fora do Docker).
 - **Pedidos**: o caminho de cada um cresce ao vivo (⏳ conta o tempo restante na fila
   de retry). Clique para ver o log com horário, componente e intervalo entre etapas.
   **status RPC** faz a consulta pelo `rpc-server` e mostra resposta e latência.
+  **Limpar lista** zera a lista e os totais em todas as abas abertas; as filas não
+  mudam. Um pedido ainda em andamento reaparece na etapa seguinte, só com as etapas
+  a partir dali.
 
 ### Como o painel enxerga os pedidos: telemetria
 
@@ -146,6 +149,7 @@ simulado do worker:
 |---|---|
 | `GET /events` | stream SSE: `snapshot`, `order`, `stats`, `broker` |
 | `POST /api/orders` | corpo `{ "count": 1-50, "failureRate": 0-100, "outcome": "random" \| "success" \| "fail-once" \| "fail-always" }`; 400 se inválido, 503 sem broker |
+| `DELETE /api/orders` | limpa a lista e os totais; todas as abas recebem o `snapshot` vazio |
 | `POST /api/orders/:id/status` | consulta RPC; `{ status, updatedAt, latencyMs }`, 504 em timeout |
 
 ## Os três padrões
@@ -318,7 +322,7 @@ retentativas (`MAX_RETRIES`, igual ao tamanho da lista) ficam em `src/lib/config
 npm test
 ```
 
-São 13 suítes e 86 testes, cobrindo conexão com retry, config, idempotência,
+São 13 suítes e 87 testes, cobrindo conexão com retry, config, idempotência,
 telemetria, worker (sucesso, retry, DLQ, JSON inválido, confirmação antes do ack,
 duplicatas, `OrderProcessed`, simulação de falha), publisher, assinantes, client/server
 RPC e o painel (estado dos pedidos, inclusive fora de ordem; validação do POST;

@@ -197,6 +197,14 @@ async function orderStatus(orderId: string, res: http.ServerResponse): Promise<v
   }
 }
 
+// Clears the list for every open tab: they all receive the empty snapshot.
+// The queues themselves are untouched.
+function clearOrders(res: http.ServerResponse): void {
+  store.clear();
+  broadcast('snapshot', { orders: store.list(), totals: store.totals() });
+  json(res, 200, { cleared: true });
+}
+
 function openEventStream(req: http.IncomingMessage, res: http.ServerResponse): void {
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
@@ -227,6 +235,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && pathname === '/events') return openEventStream(req, res);
     if (req.method === 'POST' && pathname === '/api/orders') return await createOrders(req, res);
+    if (req.method === 'DELETE' && pathname === '/api/orders') return clearOrders(res);
 
     const statusMatch = req.method === 'POST' ? STATUS_ROUTE.exec(pathname) : null;
     if (statusMatch) return await orderStatus(decodeURIComponent(statusMatch[1]), res);

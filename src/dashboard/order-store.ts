@@ -81,7 +81,7 @@ function derive(orderId: string, steps: TelemetryEvent[]): OrderView {
 
 export class OrderStore {
   private readonly orders = new Map<string, OrderView>();
-  private readonly counters = { created: 0, processed: 0, dlq: 0, duplicates: 0 };
+  private counters = { created: 0, processed: 0, dlq: 0, duplicates: 0 };
 
   constructor(private readonly maxOrders = 200) {}
 
@@ -108,6 +108,13 @@ export class OrderStore {
   totals(): Totals {
     const retrying = [...this.orders.values()].filter(o => o.status === 'retrying').length;
     return { ...this.counters, retrying };
+  }
+
+  // Forgets every order and resets the session totals. Orders still in flight
+  // reappear on their next telemetry event, with the steps from then on.
+  clear(): void {
+    this.orders.clear();
+    this.counters = { created: 0, processed: 0, dlq: 0, duplicates: 0 };
   }
 
   private count(stage: TelemetryStage): void {

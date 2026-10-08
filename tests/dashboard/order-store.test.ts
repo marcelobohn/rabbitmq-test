@@ -117,4 +117,20 @@ describe('OrderStore', () => {
 
     expect(store.totals()).toEqual({ created: 1, processed: 1, retrying: 0, dlq: 0, duplicates: 1 });
   });
+
+  it('clear() empties the list and resets the session totals', () => {
+    const store = new OrderStore();
+    store.apply(created());
+    store.apply(ev('processing', { attempt: 1 }));
+    store.apply(ev('processed', { attempt: 1 }));
+
+    store.clear();
+
+    expect(store.list()).toEqual([]);
+    expect(store.totals()).toEqual({ created: 0, processed: 0, retrying: 0, dlq: 0, duplicates: 0 });
+
+    // An order still in flight reappears with the steps from the clear onwards
+    const view = store.apply(ev('event-published', { attempt: 1 }));
+    expect(view.steps.map(s => s.stage)).toEqual(['event-published']);
+  });
 });
