@@ -1,10 +1,12 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getConnection, closeConnection } from '../lib/connection';
 import { QUEUES, OrderMessage } from '../lib/config';
+import { openTelemetry } from '../lib/telemetry';
 
 async function main(): Promise<void> {
   const connection = await getConnection();
   const channel = await connection.createConfirmChannel();
+  const emit = await openTelemetry(connection, 'producer');
 
   await channel.assertQueue(QUEUES.ORDERS_PROCESSING, {
     durable: true,
@@ -29,10 +31,17 @@ async function main(): Promise<void> {
       createdAt: new Date().toISOString(),
     };
 
+    const messageId = uuidv4();
     channel.sendToQueue(QUEUES.ORDERS_PROCESSING, Buffer.from(JSON.stringify(order)), {
       persistent: true,
-      messageId: uuidv4(),
+      messageId,
       headers: { 'x-retry-count': 0 },
+    });
+    emit({
+      orderId: order.orderId,
+      messageId,
+      stage: 'created',
+      detail: { total: order.total, customerId: order.customerId, outcome: 'success' },
     });
     console.log(`[producer] Sent order ${order.orderId} — total: $${order.total}`);
   }

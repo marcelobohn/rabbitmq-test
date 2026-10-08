@@ -8,7 +8,7 @@ export function handleNotification(order: OrderMessage): void {
 }
 
 async function main(): Promise<void> {
-  await startSubscriber(QUEUES.NOTIFICATION_EVENTS, handleNotification, 'notification-consumer');
+  await startSubscriber(QUEUES.NOTIFICATION_EVENTS, handleNotification, 'notification-consumer', 'notification-done');
 }
 
 if (require.main === module) {

@@ -9,7 +9,7 @@ export function handleInventoryUpdate(order: OrderMessage): void {
 }
 
 async function main(): Promise<void> {
-  await startSubscriber(QUEUES.INVENTORY_EVENTS, handleInventoryUpdate, 'inventory-consumer');
+  await startSubscriber(QUEUES.INVENTORY_EVENTS, handleInventoryUpdate, 'inventory-consumer', 'inventory-done');
 }
 
 if (require.main === module) {

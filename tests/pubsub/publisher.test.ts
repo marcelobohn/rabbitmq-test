@@ -19,7 +19,7 @@ describe('publishOrderCreated', () => {
       EXCHANGES.ORDERS_EVENTS,
       '',
       expect.any(Buffer),
-      expect.objectContaining({ persistent: true })
+      expect.objectContaining({ persistent: true, type: 'OrderCreated' })
     );
   });
 
