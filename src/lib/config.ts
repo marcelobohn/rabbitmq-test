@@ -12,6 +12,16 @@ export const QUEUES = {
   NOTIFICATION_EVENTS: 'orders.events.notification',
 } as const;
 
+// Every declaration of orders.processing must use exactly these options: the broker
+// rejects (and closes the channel on) a redeclaration with different arguments.
+export const ORDERS_PROCESSING_OPTIONS = {
+  durable: true,
+  arguments: {
+    'x-dead-letter-exchange': '',
+    'x-dead-letter-routing-key': QUEUES.ORDERS_DLQ,
+  },
+};
+
 export const EXCHANGES = {
   ORDERS_EVENTS: 'orders.events',
   ORDERS_TELEMETRY: 'orders.telemetry',

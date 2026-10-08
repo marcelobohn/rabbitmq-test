@@ -10,7 +10,8 @@
     "pubsub:inventory": "tsx src/pubsub/inventory-consumer.ts",
     "pubsub:notification": "tsx src/pubsub/notification-consumer.ts",
     "rpc:server": "tsx src/rpc/server.ts",
-    "rpc:client": "tsx src/rpc/client.ts"
+    "rpc:client": "tsx src/rpc/client.ts",
+    "dashboard": "tsx src/dashboard/server.ts"
   },
   "dependencies": {
     "amqplib": "^0.10.4",

@@ -232,6 +232,7 @@ describe('handleMessage — OrderProcessed and telemetry', () => {
     await run(msg, processor);
     expect(channel.nack).toHaveBeenCalledWith(msg, false, true);
     expect(channel.ack).not.toHaveBeenCalled();
+    expect(stages()).toEqual(['processing', 'processed', 'event-published', 'failed']);
 
     await run(makeMsg(sampleOrder), processor);
     expect(processor).toHaveBeenCalledTimes(2);

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getConnection, closeConnection } from '../lib/connection';
-import { QUEUES, OrderMessage } from '../lib/config';
+import { QUEUES, ORDERS_PROCESSING_OPTIONS, OrderMessage } from '../lib/config';
 import { openTelemetry } from '../lib/telemetry';
 
 async function main(): Promise<void> {
@@ -8,13 +8,7 @@ async function main(): Promise<void> {
   const channel = await connection.createConfirmChannel();
   const emit = await openTelemetry(connection, 'producer');
 
-  await channel.assertQueue(QUEUES.ORDERS_PROCESSING, {
-    durable: true,
-    arguments: {
-      'x-dead-letter-exchange': '',
-      'x-dead-letter-routing-key': QUEUES.ORDERS_DLQ,
-    },
-  });
+  await channel.assertQueue(QUEUES.ORDERS_PROCESSING, ORDERS_PROCESSING_OPTIONS);
 
   for (let i = 1; i <= 10; i++) {
     const order: OrderMessage = {

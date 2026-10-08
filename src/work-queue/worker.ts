@@ -1,6 +1,6 @@
 import { ConfirmChannel, ConsumeMessage, Options } from 'amqplib';
 import { getConnection, closeConnection } from '../lib/connection';
-import { QUEUES, EXCHANGES, MAX_RETRIES, RETRY_DELAYS, OrderMessage, SimulatedOutcome } from '../lib/config';
+import { QUEUES, ORDERS_PROCESSING_OPTIONS, EXCHANGES, MAX_RETRIES, RETRY_DELAYS, OrderMessage, SimulatedOutcome } from '../lib/config';
 import { ProcessedStore, InMemoryProcessedStore, dedupKey } from '../lib/idempotency';
 import { Emit, noopEmit, openTelemetry } from '../lib/telemetry';
 
@@ -56,7 +56,15 @@ async function forward(
 // Announces the processed order on orders.events (fanout) so the pub/sub
 // subscribers react to it. The messageId is derived from the order's, so a
 // re-published event after a reprocessing is recognised as a duplicate.
-async function publishOrderProcessed(channel: ConfirmChannel, msg: ConsumeMessage, key: string): Promise<boolean> {
+// event-published is emitted right after publishing, not after the confirm:
+// subscribers may already be handling the event by the time the confirm arrives.
+async function publishOrderProcessed(
+  channel: ConfirmChannel,
+  msg: ConsumeMessage,
+  key: string,
+  emitPublished: () => void,
+  emitUnconfirmed: (error: string) => void
+): Promise<boolean> {
   try {
     channel.publish(EXCHANGES.ORDERS_EVENTS, '', msg.content, {
       persistent: true,
@@ -64,11 +72,14 @@ async function publishOrderProcessed(channel: ConfirmChannel, msg: ConsumeMessag
       type: 'OrderProcessed',
       contentType: 'application/json',
     });
+    emitPublished();
     await channel.waitForConfirms();
     return true;
   } catch (err) {
-    console.error(`[worker] OrderProcessed not confirmed, requeueing: ${(err as Error).message}`);
+    const error = `OrderProcessed not confirmed, requeueing: ${(err as Error).message}`;
+    console.error(`[worker] ${error}`);
     channel.nack(msg, false, true);
+    emitUnconfirmed(error);
     return false;
   }
 }
@@ -133,8 +144,14 @@ export async function handleMessage(
   }
 
   emit({ ...base, stage: 'processed', attempt });
-  if (!(await publishOrderProcessed(channel, msg, key))) return;
-  emit({ ...base, stage: 'event-published', attempt });
+  const confirmed = await publishOrderProcessed(
+    channel,
+    msg,
+    key,
+    () => emit({ ...base, stage: 'event-published', attempt }),
+    (error) => emit({ ...base, stage: 'failed', attempt, detail: { error } })
+  );
+  if (!confirmed) return;
 
   // Recorded before the ack: with a persistent store, a crash in between causes a
   // redelivery that is skipped as duplicate instead of processed a second time.
@@ -149,13 +166,7 @@ async function main(): Promise<void> {
 
   await channel.assertExchange(EXCHANGES.ORDERS_EVENTS, 'fanout', { durable: true });
 
-  await channel.assertQueue(QUEUES.ORDERS_PROCESSING, {
-    durable: true,
-    arguments: {
-      'x-dead-letter-exchange': '',
-      'x-dead-letter-routing-key': QUEUES.ORDERS_DLQ,
-    },
-  });
+  await channel.assertQueue(QUEUES.ORDERS_PROCESSING, ORDERS_PROCESSING_OPTIONS);
   await channel.assertQueue(QUEUES.ORDERS_DLQ, { durable: true });
   await channel.assertQueue(QUEUES.ORDERS_RETRY_5S, {
     durable: true,

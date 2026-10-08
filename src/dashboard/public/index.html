@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pedidos ao vivo</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>RabbitMQ <span>— pedidos ao vivo</span></h1>
+    <div class="connection">
+      <span id="stream-state" class="pill pill-wait">conectando…</span>
+      <span id="broker-state" class="pill pill-wait">broker ?</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel" aria-labelledby="queues-title">
+      <h2 id="queues-title">Filas</h2>
+      <div id="queues" class="queues"><p class="muted">Aguardando a API de management…</p></div>
+      <p id="totals" class="totals"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="form-title">
+      <h2 id="form-title">Gerar pedidos</h2>
+      <form id="order-form" class="order-form">
+        <label class="field">
+          <span>Quantidade</span>
+          <input id="count" name="count" type="number" min="1" max="50" value="5" required>
+        </label>
+
+        <label class="field field-grow">
+          <span>Taxa de falha <output id="rate-value">30%</output></span>
+          <input id="failure-rate" name="failureRate" type="range" min="0" max="100" step="5" value="30">
+        </label>
+
+        <fieldset class="field outcome">
+          <legend>Resultado</legend>
+          <div class="segmented">
+            <label><input type="radio" name="outcome" value="random" checked><span>Sorteado</span></label>
+            <label><input type="radio" name="outcome" value="success"><span>Sucesso</span></label>
+            <label><input type="radio" name="outcome" value="fail-once"><span>Falha 1x</span></label>
+            <label><input type="radio" name="outcome" value="fail-always"><span>Falha sempre</span></label>
+          </div>
+        </fieldset>
+
+        <button type="submit" class="primary">Enviar</button>
+      </form>
+      <p class="hint">
+        <strong>Sorteado</strong> aplica a taxa de falha a cada pedido (metade dos que falham se
+        recupera no retry, metade vai para a DLQ). As outras opções valem para todos os pedidos do envio.
+      </p>
+      <p id="form-feedback" class="feedback" role="status"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="orders-title">
+      <div class="panel-head">
+        <h2 id="orders-title">Pedidos</h2>
+        <span class="muted">últimos 200 · clique num pedido para ver o log</span>
+      </div>
+      <ol id="orders" class="orders"></ol>
+      <p id="empty" class="muted empty">Nenhum pedido ainda. Gere alguns acima ou rode <code>npm run work-queue:producer</code>.</p>
+      <p class="hint">O <strong>status RPC</strong> é fictício: o <code>rpc-server</code> escolhe o status pelo tamanho do <code>orderId</code>.</p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

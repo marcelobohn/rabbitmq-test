@@ -51,3 +51,20 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+
+  dashboard:
+    build: .
+    command: npx tsx src/dashboard/server.ts
+    ports:
+      # Bound to localhost only: the dashboard has no authentication
+      - "127.0.0.1:3000:3000"
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_MGMT_URL: http://rabbitmq:15672
+      RABBITMQ_MGMT_USER: guest
+      RABBITMQ_MGMT_PASS: guest
+      HOST: 0.0.0.0
+      PORT: "3000"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
