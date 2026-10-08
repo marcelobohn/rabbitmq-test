@@ -6,6 +6,10 @@ export const QUEUES = {
   ORDERS_RETRY_5S: 'orders.retry.5s',
   ORDERS_RETRY_30S: 'orders.retry.30s',
   ORDERS_STATUS_RPC: 'orders.status.rpc',
+  // One durable queue per pub/sub subscriber: events published while the
+  // subscriber is down wait in its queue instead of being dropped.
+  INVENTORY_EVENTS: 'orders.events.inventory',
+  NOTIFICATION_EVENTS: 'orders.events.notification',
 } as const;
 
 export const EXCHANGES = {

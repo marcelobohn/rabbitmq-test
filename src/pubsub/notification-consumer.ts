@@ -1,5 +1,5 @@
-import { getConnection } from '../lib/connection';
-import { EXCHANGES, OrderMessage } from '../lib/config';
+import { QUEUES, OrderMessage } from '../lib/config';
+import { startSubscriber } from './subscriber';
 
 export function handleNotification(order: OrderMessage): void {
   console.log(
@@ -8,32 +8,7 @@ export function handleNotification(order: OrderMessage): void {
 }
 
 async function main(): Promise<void> {
-  const connection = await getConnection();
-  const channel = await connection.createChannel();
-
-  await channel.assertExchange(EXCHANGES.ORDERS_EVENTS, 'fanout', { durable: true });
-
-  const { queue } = await channel.assertQueue('', { exclusive: true });
-  await channel.bindQueue(queue, EXCHANGES.ORDERS_EVENTS, '');
-
-  console.log('[notification-consumer] Waiting for OrderCreated events...');
-
-  await channel.consume(queue, (msg) => {
-    if (!msg) return;
-    try {
-      const order: OrderMessage = JSON.parse(msg.content.toString());
-      handleNotification(order);
-      channel.ack(msg);
-    } catch (err) {
-      console.error('[notification-consumer] Failed to process message:', (err as Error).message);
-      channel.nack(msg, false, false);
-    }
-  });
-
-  process.on('SIGTERM', async () => {
-    await channel.close();
-    process.exit(0);
-  });
+  await startSubscriber(QUEUES.NOTIFICATION_EVENTS, handleNotification, 'notification-consumer');
 }
 
 if (require.main === module) {

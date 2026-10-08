@@ -23,6 +23,24 @@ describe('publishOrderCreated', () => {
     );
   });
 
+  it('stamps each event with a unique messageId for consumer deduplication', () => {
+    const mockChannel = { publish: jest.fn().mockReturnValue(true) } as unknown as Channel;
+    const order: OrderMessage = {
+      orderId: 'ord-003',
+      customerId: 'cust-1',
+      items: [{ productId: 'prod-1', quantity: 1, price: 10.00 }],
+      total: 10.00,
+      createdAt: '2026-05-18T00:00:00.000Z',
+    };
+
+    publishOrderCreated(mockChannel, order);
+    publishOrderCreated(mockChannel, order);
+
+    const [first, second] = (mockChannel.publish as jest.Mock).mock.calls.map(c => c[3].messageId);
+    expect(first).toEqual(expect.any(String));
+    expect(first).not.toEqual(second);
+  });
+
   it('serializes the full order payload in the message body', () => {
     const mockChannel = { publish: jest.fn().mockReturnValue(true) } as unknown as Channel;
     const order: OrderMessage = {

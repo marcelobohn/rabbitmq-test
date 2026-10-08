@@ -1,16 +1,18 @@
 import { Channel } from 'amqplib';
+import { v4 as uuidv4 } from 'uuid';
 import { getConnection, closeConnection } from '../lib/connection';
 import { EXCHANGES, OrderMessage } from '../lib/config';
 
 export function publishOrderCreated(channel: Channel, order: OrderMessage): void {
   channel.publish(EXCHANGES.ORDERS_EVENTS, '', Buffer.from(JSON.stringify(order)), {
     persistent: true,
+    messageId: uuidv4(),
   });
 }
 
 async function main(): Promise<void> {
   const connection = await getConnection();
-  const channel = await connection.createChannel();
+  const channel = await connection.createConfirmChannel();
 
   await channel.assertExchange(EXCHANGES.ORDERS_EVENTS, 'fanout', { durable: true });
 
@@ -25,6 +27,9 @@ async function main(): Promise<void> {
     publishOrderCreated(channel, order);
     console.log(`[publisher] Published OrderCreated: ${order.orderId}`);
   }
+
+  await channel.waitForConfirms();
+  console.log('[publisher] All events confirmed by the broker');
 
   await channel.close();
   await closeConnection();

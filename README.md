@@ -23,12 +23,14 @@ e-commerce fictício como cenário: **work queue**, **publish/subscribe** e **RP
 src/
 ├── lib/
 │   ├── config.ts        # URL, nomes de filas/exchanges, delays de retry, tipos
-│   └── connection.ts    # conexão compartilhada com retry e backoff exponencial
+│   ├── connection.ts    # conexão compartilhada com retry e backoff exponencial
+│   └── idempotency.ts   # registro de mensagens já processadas (deduplicação)
 ├── work-queue/
 │   ├── producer.ts      # publica 10 pedidos em orders.processing
 │   └── worker.ts        # consome um por vez, com retry e DLQ
 ├── pubsub/
 │   ├── publisher.ts             # publica 3 eventos OrderCreated no exchange fanout
+│   ├── subscriber.ts            # fila durável, ack/nack e deduplicação dos assinantes
 │   ├── inventory-consumer.ts    # "baixa estoque" (só loga)
 │   └── notification-consumer.ts # "envia confirmação" (só loga)
 └── rpc/
@@ -52,8 +54,8 @@ O `docker compose` sobe:
 |---|---|
 | `rabbitmq` | broker; AMQP em `localhost:5672`, painel em http://localhost:15672 (`guest` / `guest`) |
 | `worker` | consumidor da work queue (escala com `docker compose up --scale worker=2`) |
-| `inventory-consumer` | assinante do exchange `orders.events` |
-| `notification-consumer` | assinante do exchange `orders.events` |
+| `inventory-consumer` | assinante do exchange `orders.events` (fila `orders.events.inventory`) |
+| `notification-consumer` | assinante do exchange `orders.events` (fila `orders.events.notification`) |
 | `rpc-server` | atende a fila `orders.status.rpc` |
 
 Os serviços esperam o healthcheck do RabbitMQ e, mesmo assim, reconectam sozinhos
@@ -91,11 +93,20 @@ producer ──publica──▶ [orders.processing] ──entrega──▶ worke
   sobrevivem a um restart do broker.
 - `prefetch(1)`: o broker só entrega a próxima mensagem depois do `ack` da anterior.
   Com vários workers, quem está livre recebe a próxima.
-- O `ack` vai do worker **para o broker**, não para o producer. O producer publica
-  e termina; não fica sabendo do resultado.
+- O `ack` vai do worker **para o broker**, não para o producer. O producer não
+  fica sabendo do resultado do processamento.
+- O producer usa *publisher confirms*: antes de encerrar, espera
+  (`waitForConfirms`) o broker confirmar que gravou todas as mensagens.
+- Cada mensagem leva um `messageId` (UUID), usado pelo worker para deduplicar
+  (veja [Idempotência](#idempotência)).
 
-**Retry e dead-letter.** Se o processamento lança erro, o worker dá `ack` na
-original e republica uma cópia com o cabeçalho `x-retry-count` incrementado:
+**Retry e dead-letter.** Se o processamento lança erro, o worker publica uma cópia
+com o cabeçalho `x-retry-count` incrementado (mantendo o `messageId`), **espera o
+broker confirmar a cópia** e só então dá `ack` na original. Se o broker não
+confirmar, a original volta para a fila (`nack` com requeue) em vez de ser
+descartada. Assim, um crash no meio do caminho pode no máximo duplicar a mensagem
+(o que a deduplicação absorve), nunca perdê-la. Para isso o worker usa um
+*confirm channel*.
 
 | Tentativa | Vai para | Comportamento |
 |---|---|---|
@@ -115,16 +126,19 @@ publicando mensagens pelo Postman (veja abaixo).
 Um evento, vários interessados.
 
 ```
-publisher ──▶ (orders.events, fanout) ──┬──▶ [fila exclusiva] ──▶ inventory-consumer
-                                        └──▶ [fila exclusiva] ──▶ notification-consumer
+publisher ──▶ (orders.events, fanout) ──┬──▶ [orders.events.inventory]    ──▶ inventory-consumer
+                                        └──▶ [orders.events.notification] ──▶ notification-consumer
 ```
 
 - O exchange `orders.events` é do tipo `fanout`: copia cada mensagem para todas as
   filas ligadas a ele, ignorando routing key.
-- Cada consumidor cria uma fila anônima `exclusive` (nome `amq.gen-...`) que some
-  quando ele desconecta. Consequência: eventos publicados enquanto um consumidor
-  está fora do ar **não** chegam a ele.
-- Em caso de erro, o consumidor faz `nack` sem requeue: a mensagem é descartada.
+- Cada assinante tem sua **fila durável e nomeada**, ligada ao exchange. Ela
+  continua existindo quando o consumidor cai: eventos publicados enquanto ele está
+  fora do ar ficam guardados e são entregues quando ele volta.
+- O publisher usa *publisher confirms* e marca cada evento com um `messageId`.
+- Os dois assinantes compartilham `subscriber.ts`: `prefetch(1)`, deduplicação e
+  `ack`. Em caso de erro, o consumidor faz `nack` sem requeue: a mensagem é
+  descartada (não há retry nem DLQ no pub/sub).
 
 ### 3. RPC — `src/rpc/`
 
@@ -144,6 +158,30 @@ client ──{orderId}, replyTo, correlationId──▶ [orders.status.rpc] ─�
 - O status é fictício: `['pending', 'processing', 'shipped', 'delivered']` indexado
   por `orderId.length % 4`. `ord-001` (7 caracteres) sempre devolve `delivered`.
 
+## Idempotência
+
+RabbitMQ garante entrega *pelo menos uma vez*: depois de uma reconexão, de um
+retry ou de uma republicação, a mesma mensagem pode chegar de novo. Para não
+processar duas vezes, o worker e os assinantes consultam um `ProcessedStore`
+(`src/lib/idempotency.ts`):
+
+1. A chave é o `messageId` da mensagem; sem `messageId` (por exemplo, mensagens
+   publicadas pelo Postman), usa o `orderId`.
+2. Se a chave já foi processada, a mensagem recebe `ack` e é ignorada
+   (`Duplicate message ... — skipped` no log).
+3. Senão, processa, registra a chave e só então dá `ack`.
+
+A chave só é registrada depois de um processamento bem-sucedido, então uma
+mensagem que falhou e voltou pelo retry é processada normalmente.
+
+A implementação incluída, `InMemoryProcessedStore`, guarda até 10 000 chaves na
+memória do processo. **Ela é suficiente para a demonstração, não para produção:**
+se perde quando o processo reinicia e não é compartilhada entre réplicas
+(`--scale worker=2`). Em produção, o `ProcessedStore` seria uma tabela com chave
+única ou um `SET NX` no Redis, de preferência na mesma transação do trabalho
+realizado. Mesmo assim sobra uma janela: se o processo morrer depois de processar
+e antes de registrar a chave, a mensagem é processada de novo.
+
 ## Filas e exchanges
 
 | Nome | Tipo | Criado por | Uso |
@@ -153,6 +191,8 @@ client ──{orderId}, replyTo, correlationId──▶ [orders.status.rpc] ─�
 | `orders.retry.30s` | fila durável, TTL 30 s | worker | atraso da 2ª retentativa |
 | `orders.dlq` | fila durável | worker | mensagens que esgotaram as tentativas ou são inválidas |
 | `orders.events` | exchange fanout | publisher / consumidores | eventos `OrderCreated` |
+| `orders.events.inventory` | fila durável | inventory-consumer | cópia dos eventos para o estoque |
+| `orders.events.notification` | fila durável | notification-consumer | cópia dos eventos para notificação |
 | `orders.status.rpc` | fila durável | rpc-server | requisições de status |
 
 ## Formato das mensagens
@@ -190,8 +230,9 @@ retentativas (`MAX_RETRIES`, igual ao tamanho da lista) ficam em `src/lib/config
 npm test
 ```
 
-São 7 suítes e 28 testes, cobrindo conexão com retry, config, worker (sucesso,
-retry, DLQ, JSON inválido), publisher, consumidores e client/server RPC. Usam
+São 9 suítes e 43 testes, cobrindo conexão com retry, config, idempotência,
+worker (sucesso, retry, DLQ, JSON inválido, confirmação antes do ack, duplicatas),
+publisher, assinantes (duplicatas, falha) e client/server RPC. Usam
 canais e conexões falsos (`jest.fn()` / `jest.mock`), sem precisar de broker.
 
 ## Postman
@@ -213,9 +254,9 @@ A coleção já define as variáveis `{{base_url}}` (`http://localhost:15672`) e
 ## Limitações conhecidas
 
 - Processamento, estoque, notificação e status são simulados (só logs).
-- Pub/sub com filas exclusivas perde eventos publicados enquanto o assinante está
-  fora do ar; para entrega garantida, cada assinante precisaria de uma fila durável
-  nomeada.
+- A deduplicação é em memória: não sobrevive a restart nem funciona entre
+  várias réplicas (veja [Idempotência](#idempotência)).
+- O pub/sub não tem retry nem DLQ: um evento cujo processamento falha é descartado.
 - `npm audit` aponta 38 vulnerabilidades, quase todas em dependências de
   desenvolvimento (Jest e afins). Em produção há só uma, moderada, no `uuid` < 11.1.1,
   que afeta v3/v5/v6 com `buf` informado; o projeto usa apenas `v4()` sem `buf`.
