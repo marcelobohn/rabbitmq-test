@@ -14,7 +14,12 @@ export const QUEUES = {
 
 export const EXCHANGES = {
   ORDERS_EVENTS: 'orders.events',
+  ORDERS_TELEMETRY: 'orders.telemetry',
 } as const;
+
+// Outcome the simulated worker processor applies, read from the x-simulate header
+export type SimulatedOutcome = 'success' | 'fail-once' | 'fail-always';
+export const SIMULATED_OUTCOMES: readonly SimulatedOutcome[] = ['success', 'fail-once', 'fail-always'];
 
 export const RETRY_DELAYS: readonly number[] = [5000, 30000];
 export const MAX_RETRIES = RETRY_DELAYS.length;
