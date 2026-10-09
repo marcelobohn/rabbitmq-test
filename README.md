@@ -112,6 +112,10 @@ Abra http://localhost:3000 (ou `npm run dashboard` fora do Docker).
   mudam. Um pedido ainda em andamento reaparece na etapa seguinte, só com as etapas
   a partir dali.
 
+Os botões **ⓘ** explicam cada fila, os totais, os controles do formulário, o caminho
+do pedido, o status RPC e o "Limpar lista" (abrem no hover, no foco pelo teclado ou no
+toque).
+
 ### Como o painel enxerga os pedidos: telemetria
 
 Cada componente publica um evento curto a cada etapa no exchange `orders.telemetry`

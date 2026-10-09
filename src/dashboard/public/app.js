@@ -37,6 +37,28 @@ const COMPONENT_LABEL = {
   'notification-consumer': 'notificação',
 };
 
+// Textos das tooltips (botões ⓘ com data-help="<chave>")
+const HELP = {
+  connection: '"ao vivo": a página recebe atualizações do servidor (Server-Sent Events). "broker": o servidor do painel está conectado ao RabbitMQ. Se cair, ele reconecta sozinho.',
+  queues: 'Quantas mensagens cada fila tem agora, segundo a API de management do RabbitMQ (atualiza a cada 2 s, com alguns segundos de atraso).',
+  'orders.processing': 'A work queue: pedidos esperando um worker. ↑ é a taxa de entrada e ↓ a de confirmação (ack) por segundo. O worker processa um por vez (prefetch 1).',
+  'orders.retry.5s': 'Pedidos que falharam pela 1ª vez. Ninguém consome esta fila: a mensagem expira em 5 s (TTL) e o RabbitMQ a devolve para orders.processing.',
+  'orders.retry.30s': 'Pedidos que falharam pela 2ª vez: esperam 30 s aqui antes da última tentativa.',
+  'orders.dlq': 'Dead-letter queue: pedidos que falharam 3 vezes ou chegaram com JSON inválido. Ficam parados para alguém analisar.',
+  'orders.events.inventory': 'Fila durável do estoque, ligada ao exchange orders.events (fanout). Recebe uma cópia de cada evento, mesmo com o consumidor fora do ar.',
+  'orders.events.notification': 'Fila durável da notificação. O fanout copia cada evento para ela e para a do estoque: um evento, vários interessados.',
+  'orders.status.rpc': 'Fila do RPC: perguntas de status. O rpc-server responde na fila de resposta indicada em replyTo, com o mesmo correlationId.',
+  'queue-other': 'Outra fila com o prefixo orders.',
+  totals: 'Contados a partir da telemetria desde que o painel subiu (ou desde o último "Limpar lista"). "Em retry" é quantos estão esperando agora.',
+  generate: 'Publica pedidos em orders.processing e acompanha cada um pela telemetria que o worker e os assinantes emitem.',
+  count: 'Quantos pedidos publicar de uma vez (1 a 50).',
+  'failure-rate': 'Vale para "Sorteado": a chance de cada pedido falhar. Dos que falham, metade se recupera no retry e metade vai para a DLQ.',
+  outcome: 'Sorteado usa a taxa de falha. Sucesso: processa de primeira. Falha 1x: falha, espera 5 s no retry e conclui. Falha sempre: 5 s, 30 s e DLQ (~35 s).',
+  orders: 'O caminho de cada pedido: criado → processando → (falhou → retry → processando…) → processado → evento → estoque ✓ e notificação ✓. Clique num pedido para ver o log com horários.',
+  rpc: 'Pergunta e resposta sobre filas: o painel envia a pergunta com replyTo e correlationId e espera a resposta (até 5 s). O status em si é inventado.',
+  clear: 'Zera a lista e os totais em todas as abas abertas. As filas do RabbitMQ não mudam; pedidos em andamento reaparecem na etapa seguinte.',
+};
+
 const $ = (id) => document.getElementById(id);
 const els = {
   streamState: $('stream-state'),
@@ -81,6 +103,10 @@ const rateFmt = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 function time(iso) {
   const d = new Date(iso);
   return d.toLocaleTimeString('pt-BR', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+}
+
+function help(key, label) {
+  return el('button', { type: 'button', class: 'help', 'data-help': key, 'aria-label': `Sobre: ${label}` }, 'ⓘ');
 }
 
 function setPill(node, text, kind) {
@@ -257,6 +283,7 @@ function renderQueues(queues, error) {
   const rank = (name) => { const i = QUEUE_ORDER.indexOf(name); return i === -1 ? QUEUE_ORDER.length : i; };
   const sorted = [...queues].sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
 
+  const focused = document.activeElement?.closest?.('#queues .help')?.dataset.help;
   els.queues.replaceChildren(...sorted.map((q) => {
     const classes = ['queue'];
     if (q.messages > 0) classes.push('has-messages');
@@ -266,11 +293,14 @@ function renderQueues(queues, error) {
       ? `↑ ${rateFmt.format(q.publishRate)}/s · ↓ ${rateFmt.format(q.ackRate)}/s`
       : `${q.consumers} consumidor${q.consumers === 1 ? '' : 'es'}`;
     return el('div', { class: classes.join(' ') },
-      el('div', { class: 'queue-name' }, q.name),
+      el('div', { class: 'queue-name' }, `${q.name} `, help(q.name in HELP ? q.name : 'queue-other', q.name)),
       el('div', { class: 'queue-depth' }, q.messages),
       el('div', { class: 'queue-meta' }, meta),
     );
   }));
+  // Recriado a cada 2 s: devolve o foco de teclado ao mesmo ⓘ
+  if (focused) els.queues.querySelector(`.help[data-help="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+  tooltip.refresh();
 }
 
 // Keeps the ⏳ countdown of orders waiting in a retry queue ticking
@@ -344,6 +374,91 @@ els.form.addEventListener('submit', async (e) => {
     button.disabled = false;
   }
 });
+
+// --- tooltips -------------------------------------------------------------------
+// Um balão só para a página. Abre no hover, no foco (teclado) e no toque; fecha
+// com Esc, clique fora ou ao sair. Segue o botão pela chave data-help, porque os
+// cartões das filas são redesenhados a cada 2 s.
+
+const tooltip = (() => {
+  const box = $('tooltip');
+  let key = null;
+  let pinned = false;
+
+  function anchor() {
+    return key ? document.querySelector(`.help[data-help="${CSS.escape(key)}"]`) : null;
+  }
+
+  function place() {
+    const button = anchor();
+    if (!button || box.hidden) return hide();
+    const r = button.getBoundingClientRect();
+    const margin = 8;
+    const width = box.offsetWidth;
+    const left = Math.min(Math.max(margin, r.left + r.width / 2 - width / 2), window.innerWidth - width - margin);
+    let top = r.bottom + 6;
+    if (top + box.offsetHeight > window.innerHeight - margin) top = r.top - box.offsetHeight - 6;
+    box.style.left = `${left}px`;
+    box.style.top = `${Math.max(margin, top)}px`;
+    button.setAttribute('aria-describedby', 'tooltip');
+    button.setAttribute('aria-expanded', 'true');
+  }
+
+  function release() {
+    const button = anchor();
+    button?.removeAttribute('aria-describedby');
+    button?.removeAttribute('aria-expanded');
+  }
+
+  function show(button, pin = false) {
+    const text = HELP[button.dataset.help];
+    if (!text) return;
+    if (key && key !== button.dataset.help) release();
+    key = button.dataset.help;
+    pinned = pin;
+    box.textContent = text;
+    box.hidden = false;
+    place();
+  }
+
+  function hide() {
+    release();
+    key = null;
+    pinned = false;
+    box.hidden = true;
+  }
+
+  document.addEventListener('mouseover', (e) => {
+    const button = e.target.closest('.help');
+    if (button && !pinned) show(button);
+  });
+  document.addEventListener('mouseout', (e) => {
+    const button = e.target.closest('.help');
+    if (button && !pinned && !button.contains(e.relatedTarget)) hide();
+  });
+  document.addEventListener('focusin', (e) => {
+    const button = e.target.closest('.help');
+    if (button) show(button);
+  });
+  document.addEventListener('focusout', (e) => {
+    if (e.target.closest('.help') && !pinned) hide();
+  });
+  document.addEventListener('click', (e) => {
+    const button = e.target.closest('.help');
+    if (button) {
+      e.preventDefault();
+      e.stopPropagation(); // o ⓘ fica dentro de áreas clicáveis (cabeçalho do pedido)
+      if (pinned && key === button.dataset.help) hide(); else show(button, true);
+    } else if (key) {
+      hide();
+    }
+  }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && key) hide(); });
+  window.addEventListener('resize', () => key && place());
+  window.addEventListener('scroll', () => key && place(), { passive: true });
+
+  return { refresh: () => key && place() };
+})();
 
 // --- live stream -------------------------------------------------------------
 

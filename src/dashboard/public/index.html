@@ -12,31 +12,32 @@
     <div class="connection">
       <span id="stream-state" class="pill pill-wait">conectando…</span>
       <span id="broker-state" class="pill pill-wait">broker ?</span>
+      <button type="button" class="help" data-help="connection" aria-label="Sobre: conexão">ⓘ</button>
     </div>
   </header>
 
   <main>
     <section class="panel" aria-labelledby="queues-title">
-      <h2 id="queues-title">Filas</h2>
+      <h2 id="queues-title">Filas <button type="button" class="help" data-help="queues" aria-label="Sobre: filas">ⓘ</button></h2>
       <div id="queues" class="queues"><p class="muted">Aguardando a API de management…</p></div>
-      <p id="totals" class="totals"></p>
+      <p class="totals"><span id="totals"></span> <button type="button" class="help" data-help="totals" aria-label="Sobre: totais da sessão">ⓘ</button></p>
     </section>
 
     <section class="panel" aria-labelledby="form-title">
-      <h2 id="form-title">Gerar pedidos</h2>
+      <h2 id="form-title">Gerar pedidos <button type="button" class="help" data-help="generate" aria-label="Sobre: gerar pedidos">ⓘ</button></h2>
       <form id="order-form" class="order-form">
         <label class="field">
-          <span>Quantidade</span>
+          <span>Quantidade <button type="button" class="help" data-help="count" aria-label="Sobre: quantidade">ⓘ</button></span>
           <input id="count" name="count" type="number" min="1" max="50" value="5" required>
         </label>
 
         <label class="field field-grow">
-          <span>Taxa de falha <output id="rate-value">30%</output></span>
+          <span>Taxa de falha <output id="rate-value">30%</output> <button type="button" class="help" data-help="failure-rate" aria-label="Sobre: taxa de falha">ⓘ</button></span>
           <input id="failure-rate" name="failureRate" type="range" min="0" max="100" step="5" value="30">
         </label>
 
         <fieldset class="field outcome">
-          <legend>Resultado</legend>
+          <legend>Resultado <button type="button" class="help" data-help="outcome" aria-label="Sobre: resultado">ⓘ</button></legend>
           <div class="segmented">
             <label><input type="radio" name="outcome" value="random" checked><span>Sorteado</span></label>
             <label><input type="radio" name="outcome" value="success"><span>Sucesso</span></label>
@@ -56,16 +57,17 @@
 
     <section class="panel" aria-labelledby="orders-title">
       <div class="panel-head">
-        <h2 id="orders-title">Pedidos</h2>
+        <h2 id="orders-title">Pedidos <button type="button" class="help" data-help="orders" aria-label="Sobre: caminho do pedido">ⓘ</button></h2>
         <span class="muted">últimos 200 · clique num pedido para ver o log</span>
-        <button id="clear-orders" type="button" title="Zera a lista e os totais em todas as abas; as filas não mudam">Limpar lista</button>
+        <span class="clear-wrap"><button id="clear-orders" type="button">Limpar lista</button> <button type="button" class="help" data-help="clear" aria-label="Sobre: limpar lista">ⓘ</button></span>
       </div>
       <ol id="orders" class="orders"></ol>
       <p id="empty" class="muted empty">Nenhum pedido ainda. Gere alguns acima ou rode <code>npm run work-queue:producer</code>.</p>
-      <p class="hint">O <strong>status RPC</strong> é fictício: o <code>rpc-server</code> escolhe o status pelo tamanho do <code>orderId</code>.</p>
+      <p class="hint">O <strong>status RPC</strong> é fictício: o <code>rpc-server</code> escolhe o status pelo tamanho do <code>orderId</code>. <button type="button" class="help" data-help="rpc" aria-label="Sobre: status RPC">ⓘ</button></p>
     </section>
   </main>
 
+  <div id="tooltip" role="tooltip" class="tooltip" hidden></div>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -269,3 +269,40 @@ button.primary { background: var(--accent); color: var(--accent-text); border-co
   .order-form { align-items: stretch; }
   .order-form button.primary { width: 100%; }
 }
+
+/* Tooltips: botão ⓘ + um balão único, posicionado pelo app.js */
+.help {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: 2px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: help;
+}
+.help:hover, .help:focus-visible, .help[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  max-width: min(340px, calc(100vw - 16px));
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.4;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.2);
+  pointer-events: none;
+}
+.connection { align-items: center; }
+.clear-wrap { display: inline-flex; align-items: center; gap: 4px; }
+[hidden] { display: none !important; }
