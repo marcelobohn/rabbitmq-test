@@ -41,6 +41,8 @@ src/
 ├── rpc/
 │   ├── server.ts        # responde consultas de status de pedido
 │   └── client.ts        # envia a consulta e espera a resposta (timeout de 5 s)
+├── bank/
+│   └── alerts-consumer.ts  # alerta de saque alto, com eventos do event-sourcing-php
 └── dashboard/
     ├── server.ts        # HTTP + SSE; consome a telemetria e cria pedidos
     ├── order-store.ts   # monta o estado de cada pedido a partir da telemetria
@@ -151,6 +153,32 @@ simulado do worker:
 | `POST /api/orders` | corpo `{ "count": 1-50, "failureRate": 0-100, "outcome": "random" \| "success" \| "fail-once" \| "fail-always" }`; 400 se inválido, 503 sem broker |
 | `DELETE /api/orders` | limpa a lista e os totais; todas as abas recebem o `snapshot` vazio |
 | `POST /api/orders/:id/status` | consulta RPC; `{ status, updatedAt, latencyMs }`, 504 em timeout |
+
+## Integração com o event-sourcing-php — `src/bank/`
+
+O projeto [`event-sourcing-php`](https://github.com/marcelobohn/event-sourcing-php)
+usa este mesmo RabbitMQ no modo `--via=rabbitmq`: comandos entram pela fila
+`bank.commands` e os eventos gravados saem pelo exchange `bank.events` (tipo
+`topic`, routing key `account.<Tipo>`). Os nomes `bank.*` não se misturam com os
+`orders.*` deste projeto.
+
+`alerts-consumer.ts` é um consumidor em TypeScript desses eventos PHP — dois
+sistemas em linguagens diferentes ligados só pelo broker e pelo formato JSON:
+
+- fila durável `bank.events.alerts` com binding **`account.MoneyWithdrawn`**: o
+  exchange topic entrega só os saques; aberturas e depósitos nem chegam;
+- saque a partir de `BANK_ALERT_THRESHOLD` centavos (padrão `100000`, R$ 1.000,00)
+  gera um alerta; os demais, uma linha simples;
+- deduplica pelo `messageId` (`<conta>:<versão>`), porque o relay do lado PHP pode
+  republicar depois de uma queda.
+
+```bash
+npm run bank:alerts   # com o worker, o relay e o projector do event-sourcing-php no ar
+```
+
+A fila só passa a existir quando o consumidor sobe pela primeira vez: saques
+publicados antes disso não chegam a ela (o exchange descarta o que nenhuma fila
+recebe).
 
 ## Os três padrões
 
@@ -282,6 +310,7 @@ e antes de registrar a chave, a mensagem é processada de novo.
 | `orders.events.notification` | fila durável | notification-consumer | cópia dos eventos para notificação |
 | `orders.status.rpc` | fila durável | rpc-server | requisições de status |
 | `orders.telemetry` | exchange topic | todos | telemetria para o painel |
+| `bank.events.alerts` | fila durável | alerts-consumer | saques vindos do event-sourcing-php |
 | `amq.gen-…` | fila exclusiva | painel, client RPC | telemetria do painel; respostas do RPC |
 
 ## Formato das mensagens
@@ -322,10 +351,10 @@ retentativas (`MAX_RETRIES`, igual ao tamanho da lista) ficam em `src/lib/config
 npm test
 ```
 
-São 13 suítes e 87 testes, cobrindo conexão com retry, config, idempotência,
+São 14 suítes e 92 testes, cobrindo conexão com retry, config, idempotência,
 telemetria, worker (sucesso, retry, DLQ, JSON inválido, confirmação antes do ack,
 duplicatas, `OrderProcessed`, simulação de falha), publisher, assinantes, client/server
-RPC e o painel (estado dos pedidos, inclusive fora de ordem; validação do POST;
+RPC, o consumidor de alertas e o painel (estado dos pedidos, inclusive fora de ordem; validação do POST;
 sorteio de resultados; contadores). Usam
 canais e conexões falsos (`jest.fn()` / `jest.mock`), sem precisar de broker.
 
